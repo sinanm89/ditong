@@ -39,6 +39,9 @@ func main() {
 	parallelIngest := pflag.Bool("parallel-ingest", true, "Enable parallel line processing within files")
 	parallelBuild := pflag.Bool("parallel-build", true, "Enable parallel file writing during build")
 
+	// Content flags
+	includeCursewords := pflag.Bool("cursewords", false, "Include curseword dictionaries")
+
 	pflag.Parse()
 
 	// Auto-detect workers
@@ -88,6 +91,7 @@ func main() {
 		"workers":         *workers,
 		"parallel_ingest": *parallelIngest,
 		"parallel_build":  *parallelBuild,
+		"cursewords":      *includeCursewords,
 	})
 
 	// Show configuration
@@ -224,6 +228,45 @@ func main() {
 	collector.SetStageCounter("download", "words_raw", totalRaw)
 	collector.SetStageCounter("download", "words_valid", totalValid)
 	collector.SetStageCounter("download", "languages", int64(len(langs)))
+
+	// Optional: Ingest cursewords
+	var cursewordCount int64
+	if *includeCursewords {
+		collector.StartStage("cursewords")
+		if !*benchmark {
+			term.Info("Including curseword dictionaries...")
+		}
+
+		for _, lang := range langs {
+			if !ingest.HasCursewordSupport(lang) {
+				continue
+			}
+
+			config := ingest.CursewordConfig(lang)
+			config.MinLength = *minLength
+			config.MaxLength = *maxLength
+
+			langCacheDir := filepath.Join(*cacheDir, lang)
+			result, err := ingest.DownloadAndIngestCursewords(lang, langCacheDir, config, *force)
+
+			if err != nil {
+				if !*benchmark {
+					term.Warning(fmt.Sprintf("Cursewords [%s]: %v", lang, err))
+				}
+				continue
+			}
+
+			cursewordCount += int64(result.TotalValid)
+			if !*benchmark {
+				term.LanguageStatus(lang, "cursewords", fmt.Sprintf("%d words", result.TotalValid))
+			}
+			dictBuilder.AddWords(result.Words, lang)
+			synthBuilder.AddWords(result.Words)
+		}
+
+		collector.EndStage("cursewords")
+		collector.SetStageCounter("cursewords", "words", cursewordCount)
+	}
 
 	// Phase 2: Build per-language dictionaries
 	collector.StartStage("build")
