@@ -37,6 +37,7 @@ func main() {
 	parallel := pflag.BoolP("parallel", "p", true, "Enable parallel processing")
 	workers := pflag.IntP("workers", "w", 0, "Number of parallel workers (0 = auto)")
 	parallelIngest := pflag.Bool("parallel-ingest", true, "Enable parallel line processing within files")
+	parallelBuild := pflag.Bool("parallel-build", true, "Enable parallel file writing during build")
 
 	pflag.Parse()
 
@@ -86,6 +87,7 @@ func main() {
 		"parallel":        *parallel,
 		"workers":         *workers,
 		"parallel_ingest": *parallelIngest,
+		"parallel_build":  *parallelBuild,
 	})
 
 	// Show configuration
@@ -233,7 +235,15 @@ func main() {
 	if !*benchmark {
 		buildSpinner = term.Spinner("Writing dictionary files...")
 	}
-	stats := dictBuilder.Build()
+
+	var stats *builder.BuildStats
+	if *parallelBuild && *workers > 1 {
+		buildConfig := builder.ParallelBuildConfig{Workers: *workers}
+		stats = dictBuilder.ParallelBuild(buildConfig)
+	} else {
+		stats = dictBuilder.Build()
+	}
+
 	if buildSpinner != nil {
 		buildSpinner.Stop()
 	}
@@ -273,7 +283,15 @@ func main() {
 	if !*benchmark {
 		synthSpinner = term.Spinner(fmt.Sprintf("Building synthesis: %s...", synthName))
 	}
-	synthStats := synthBuilder.Build(synthConfig)
+
+	var synthStats *builder.SynthesisStats
+	if *parallelBuild && *workers > 1 {
+		buildConfig := builder.ParallelBuildConfig{Workers: *workers}
+		synthStats = synthBuilder.ParallelBuild(synthConfig, buildConfig)
+	} else {
+		synthStats = synthBuilder.Build(synthConfig)
+	}
+
 	if synthSpinner != nil {
 		synthSpinner.Stop()
 	}
