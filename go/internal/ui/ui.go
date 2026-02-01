@@ -47,11 +47,22 @@ func (u *UI) Banner() {
 
 // Config prints the configuration summary.
 func (u *UI) Config(languages []string, minLen, maxLen int, outputDir string) {
+	u.ConfigWithParallel(languages, minLen, maxLen, outputDir, false, 0)
+}
+
+// ConfigWithParallel prints the configuration summary with parallel settings.
+func (u *UI) ConfigWithParallel(languages []string, minLen, maxLen int, outputDir string, parallel bool, workers int) {
 	pterm.DefaultSection.Println("Configuration")
+
+	parallelStr := "disabled"
+	if parallel {
+		parallelStr = fmt.Sprintf("%d workers", workers)
+	}
 
 	data := [][]string{
 		{"Languages", fmt.Sprintf("%v", languages)},
 		{"Length Range", fmt.Sprintf("%d - %d characters", minLen, maxLen)},
+		{"Parallel", parallelStr},
 		{"Output", outputDir},
 	}
 

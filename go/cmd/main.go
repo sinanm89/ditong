@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"ditong/internal/builder"
 	"ditong/internal/ingest"
@@ -31,7 +33,19 @@ func main() {
 	writeMetrics := pflag.Bool("metrics", true, "Write metrics to output directory")
 	benchmark := pflag.Bool("benchmark", false, "Run in benchmark mode (JSON output only)")
 
+	// Parallel processing flags
+	parallel := pflag.BoolP("parallel", "p", true, "Enable parallel processing")
+	workers := pflag.IntP("workers", "w", 0, "Number of parallel workers (0 = auto)")
+
 	pflag.Parse()
+
+	// Auto-detect workers
+	if *workers <= 0 {
+		*workers = runtime.NumCPU()
+		if *workers > 8 {
+			*workers = 8 // Cap at 8 for network I/O
+		}
+	}
 
 	// Initialize UI
 	term := ui.New(*quiet || *benchmark, *verbose)
@@ -68,12 +82,13 @@ func main() {
 		"languages":  langs,
 		"min_length": *minLength,
 		"max_length": *maxLength,
-		"parallel":   false, // Will be true in future PRs
+		"parallel":   *parallel,
+		"workers":    *workers,
 	})
 
 	// Show configuration
 	if !*benchmark {
-		term.Config(langs, *minLength, *maxLength, *outputDir)
+		term.ConfigWithParallel(langs, *minLength, *maxLength, *outputDir, *parallel, *workers)
 	}
 
 	// Initialize builders
@@ -87,39 +102,97 @@ func main() {
 	}
 
 	var totalRaw, totalValid int64
-	for _, lang := range langs {
-		var spinner *ui.SpinnerWrapper
+
+	if *parallel && len(langs) > 1 {
+		// Parallel download and ingest
 		if !*benchmark {
-			spinner = term.Spinner(fmt.Sprintf("Processing %s...", strings.ToUpper(lang)))
+			term.Info(fmt.Sprintf("Parallel mode: %d workers", *workers))
 		}
 
-		config := ingest.DefaultConfig(lang)
-		config.MinLength = *minLength
-		config.MaxLength = *maxLength
-
-		langCacheDir := filepath.Join(*cacheDir, lang)
-		result, err := ingest.DownloadAndIngest(lang, langCacheDir, config, *force)
-
-		if spinner != nil {
-			spinner.Stop()
+		parallelConfig := ingest.ParallelConfig{
+			Workers:   *workers,
+			Force:     *force,
+			MinLength: *minLength,
+			MaxLength: *maxLength,
 		}
 
-		if err != nil {
-			if !*benchmark {
-				term.LanguageStatus(lang, "error", err.Error())
+		// Track progress with mutex for thread-safe UI updates
+		var mu sync.Mutex
+		completedCount := 0
+
+		results := ingest.ParallelDownloadAndIngest(langs, *cacheDir, parallelConfig, func(lang string, r *ingest.LanguageResult) {
+			mu.Lock()
+			defer mu.Unlock()
+			completedCount++
+
+			if *benchmark {
+				return
 			}
-			continue
+
+			if r.Error != nil {
+				term.LanguageStatus(lang, "error", r.Error.Error())
+			} else {
+				status := "ok"
+				details := fmt.Sprintf("%d words", r.Result.TotalValid)
+				if r.Cached {
+					details += " (cached)"
+				}
+				term.LanguageStatus(lang, status, details)
+			}
+		})
+
+		// Aggregate results
+		for _, r := range results {
+			if r.Error != nil {
+				continue
+			}
+			totalRaw += int64(r.Result.TotalRaw)
+			totalValid += int64(r.Result.TotalValid)
+			dictBuilder.AddWords(r.Result.Words, r.Language)
+			synthBuilder.AddWords(r.Result.Words)
 		}
 
-		totalRaw += int64(result.TotalRaw)
-		totalValid += int64(result.TotalValid)
+		pstats := ingest.AggregateResults(results)
+		collector.SetStageCounter("download", "cached", int64(pstats.Cached))
+		collector.SetStageCounter("download", "failed", int64(pstats.Failed))
 
-		if !*benchmark {
-			term.LanguageStatus(lang, "ok", fmt.Sprintf("%d words ingested", result.TotalValid))
+	} else {
+		// Sequential download and ingest
+		for _, lang := range langs {
+			var spinner *ui.SpinnerWrapper
+			if !*benchmark {
+				spinner = term.Spinner(fmt.Sprintf("Processing %s...", strings.ToUpper(lang)))
+			}
+
+			config := ingest.DefaultConfig(lang)
+			config.MinLength = *minLength
+			config.MaxLength = *maxLength
+
+			langCacheDir := filepath.Join(*cacheDir, lang)
+			result, err := ingest.DownloadAndIngest(lang, langCacheDir, config, *force)
+
+			if spinner != nil {
+				spinner.Stop()
+			}
+
+			if err != nil {
+				if !*benchmark {
+					term.LanguageStatus(lang, "error", err.Error())
+				}
+				continue
+			}
+
+			totalRaw += int64(result.TotalRaw)
+			totalValid += int64(result.TotalValid)
+
+			if !*benchmark {
+				term.LanguageStatus(lang, "ok", fmt.Sprintf("%d words ingested", result.TotalValid))
+			}
+			dictBuilder.AddWords(result.Words, lang)
+			synthBuilder.AddWords(result.Words)
 		}
-		dictBuilder.AddWords(result.Words, lang)
-		synthBuilder.AddWords(result.Words)
 	}
+
 	collector.EndStage("download")
 	collector.SetStageCounter("download", "words_raw", totalRaw)
 	collector.SetStageCounter("download", "words_valid", totalValid)
@@ -220,12 +293,14 @@ func main() {
 	// Final report
 	if *benchmark {
 		// In benchmark mode, output JSON metrics
-		fmt.Printf(`{"run_id":"%s","duration_ms":%d,"throughput":%.2f,"words":%d,"files":%d}`,
+		fmt.Printf(`{"run_id":"%s","duration_ms":%d,"throughput":%.2f,"words":%d,"files":%d,"parallel":%t,"workers":%d}`,
 			runMetrics.RunID,
 			runMetrics.Totals.DurationMs,
 			runMetrics.Totals.Throughput,
 			runMetrics.Totals.WordsProcessed,
 			runMetrics.Totals.FilesWritten,
+			*parallel,
+			*workers,
 		)
 		fmt.Println()
 	} else {
