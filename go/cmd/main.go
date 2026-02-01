@@ -2,28 +2,40 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"ditong/internal/builder"
 	"ditong/internal/ingest"
+	"ditong/internal/ui"
+
+	"github.com/spf13/pflag"
 )
 
 func main() {
-	languages := flag.String("languages", "en,tr", "Comma-separated language codes")
-	minLength := flag.Int("min-length", 3, "Minimum word length")
-	maxLength := flag.Int("max-length", 10, "Maximum word length")
-	outputDir := flag.String("output-dir", "", "Output directory for dictionaries")
-	cacheDir := flag.String("cache-dir", "", "Cache directory for downloaded sources")
-	synthesis := flag.String("synthesis", "", "Name for synthesis dictionary")
-	force := flag.Bool("force", false, "Force re-download of dictionaries")
-	noSplit := flag.Bool("no-split", false, "Don't split synthesis by first letter")
+	// Flags
+	languages := pflag.StringP("languages", "l", "en,tr", "Comma-separated language codes")
+	minLength := pflag.Int("min-length", 3, "Minimum word length")
+	maxLength := pflag.Int("max-length", 10, "Maximum word length")
+	outputDir := pflag.StringP("output-dir", "o", "", "Output directory for dictionaries")
+	cacheDir := pflag.StringP("cache-dir", "c", "", "Cache directory for downloaded sources")
+	synthesis := pflag.StringP("synthesis", "s", "", "Name for synthesis dictionary")
+	force := pflag.BoolP("force", "f", false, "Force re-download of dictionaries")
+	noSplit := pflag.Bool("no-split", false, "Don't split synthesis by first letter")
+	quiet := pflag.BoolP("quiet", "q", false, "Suppress progress output")
+	verbose := pflag.BoolP("verbose", "v", false, "Verbose logging")
 
-	flag.Parse()
+	pflag.Parse()
+
+	// Initialize UI
+	term := ui.New(*quiet, *verbose)
+
+	// Print banner
+	term.Banner()
 
 	// Get base directory
 	exe, _ := os.Executable()
@@ -40,27 +52,26 @@ func main() {
 		*cacheDir = filepath.Join(baseDir, "sources")
 	}
 
+	// Parse languages
 	langs := strings.Split(*languages, ",")
 	for i := range langs {
 		langs[i] = strings.TrimSpace(langs[i])
 	}
 
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println("ditong - Multi-language Lexicon Toolkit")
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Printf("Languages: %s\n", strings.Join(langs, ", "))
-	fmt.Printf("Length range: %d-%d\n", *minLength, *maxLength)
-	fmt.Printf("Output: %s\n", *outputDir)
-	fmt.Println()
+	// Show configuration
+	term.Config(langs, *minLength, *maxLength, *outputDir)
+
+	startTime := time.Now()
 
 	// Initialize builders
 	dictBuilder := builder.NewDictionaryBuilder(*outputDir, *minLength, *maxLength)
 	synthBuilder := builder.NewSynthesisBuilder(*outputDir)
 
-	// Ingest each language
-	fmt.Println("[1/3] Downloading and ingesting dictionaries...")
+	// Phase 1: Download and ingest
+	term.Phase(1, 3, "Downloading and ingesting dictionaries")
+
 	for _, lang := range langs {
-		fmt.Printf("\n  [%s] ", lang)
+		spinner := term.Spinner(fmt.Sprintf("Processing %s...", strings.ToUpper(lang)))
 
 		config := ingest.DefaultConfig(lang)
 		config.MinLength = *minLength
@@ -68,39 +79,38 @@ func main() {
 
 		langCacheDir := filepath.Join(*cacheDir, lang)
 		result, err := ingest.DownloadAndIngest(lang, langCacheDir, config, *force)
+
+		spinner.Stop()
+
 		if err != nil {
-			fmt.Printf("ERROR - %v\n", err)
+			term.LanguageStatus(lang, "error", err.Error())
 			continue
 		}
 
-		fmt.Printf("OK - %d words\n", result.TotalValid)
+		term.LanguageStatus(lang, "ok", fmt.Sprintf("%d words ingested", result.TotalValid))
 		dictBuilder.AddWords(result.Words, lang)
 		synthBuilder.AddWords(result.Words)
 	}
 
-	// Build per-language dictionaries
-	fmt.Println("\n[2/3] Building per-language dictionaries...")
+	// Phase 2: Build per-language dictionaries
+	term.Phase(2, 3, "Building per-language dictionaries")
+
+	buildSpinner := term.Spinner("Writing dictionary files...")
 	stats := dictBuilder.Build()
-	fmt.Printf("  Total words: %d\n", stats.TotalWords)
-	fmt.Printf("  Files written: %d\n", len(stats.FilesWritten))
+	buildSpinner.Stop()
 
-	// Sort languages for display
-	langKeys := make([]string, 0, len(stats.ByLanguage))
-	for lang := range stats.ByLanguage {
-		langKeys = append(langKeys, lang)
-	}
-	sort.Strings(langKeys)
+	term.LanguageStats(stats.ByLanguage)
+	term.Info(fmt.Sprintf("Total: %d words in %d files", stats.TotalWords, len(stats.FilesWritten)))
 
-	for _, lang := range langKeys {
-		fmt.Printf("    %s: %d\n", lang, stats.ByLanguage[lang])
-	}
+	// Phase 3: Build synthesis dictionary
+	term.Phase(3, 3, "Building synthesis dictionary")
 
-	// Build synthesis dictionary
-	fmt.Println("\n[3/3] Building synthesis dictionary...")
 	synthName := *synthesis
 	if synthName == "" {
-		sort.Strings(langs)
-		synthName = strings.Join(langs, "_") + "_standard"
+		sortedLangs := make([]string, len(langs))
+		copy(sortedLangs, langs)
+		sort.Strings(sortedLangs)
+		synthName = strings.Join(sortedLangs, "_") + "_standard"
 	}
 
 	synthConfig := builder.NewSynthesisConfig(synthName)
@@ -112,24 +122,17 @@ func main() {
 	synthConfig.MaxLength = *maxLength
 	synthConfig.SplitByLetter = !*noSplit
 
+	synthSpinner := term.Spinner(fmt.Sprintf("Building synthesis: %s...", synthName))
 	synthStats := synthBuilder.Build(synthConfig)
-	fmt.Printf("  Synthesis name: %s\n", synthName)
-	fmt.Printf("  Unique words: %d\n", synthStats.TotalWords)
-	fmt.Printf("  Files written: %d\n", len(synthStats.FilesWritten))
+	synthSpinner.Stop()
 
-	fmt.Println("\n  By length:")
-	lengthKeys := make([]int, 0, len(synthStats.ByLength))
-	for length := range synthStats.ByLength {
-		lengthKeys = append(lengthKeys, length)
-	}
-	sort.Ints(lengthKeys)
+	term.Info(fmt.Sprintf("Synthesis: %s", synthName))
+	term.LengthStats(synthStats.ByLength)
+	term.Info(fmt.Sprintf("Unique words: %d in %d files", synthStats.TotalWords, len(synthStats.FilesWritten)))
 
-	for _, length := range lengthKeys {
-		fmt.Printf("    %d-c: %d\n", length, synthStats.ByLength[length])
-	}
-
-	fmt.Println()
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println("Done!")
-	fmt.Println(strings.Repeat("=", 60))
+	// Final report
+	duration := time.Since(startTime)
+	totalFiles := len(stats.FilesWritten) + len(synthStats.FilesWritten)
+	term.FinalReport(stats.TotalWords, totalFiles, duration)
+	term.Done()
 }

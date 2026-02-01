@@ -3,6 +3,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -276,7 +277,7 @@ func (d *Dictionary) Save(filePath string) error {
 // WordTypeFromLength returns word type string from length.
 func WordTypeFromLength(length int) string {
 	if length >= 3 && length <= 10 {
-		return string(rune('0'+length/10)) + string(rune('0'+length%10)) + "-c"[1:]
+		return fmt.Sprintf("%d-c", length)
 	}
 	return ""
 }
