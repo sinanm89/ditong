@@ -12,6 +12,7 @@ import (
 
 	"ditong/internal/builder"
 	"ditong/internal/ingest"
+	"ditong/internal/ipa"
 	"ditong/internal/metrics"
 	"ditong/internal/ui"
 
@@ -41,6 +42,9 @@ func main() {
 
 	// Content flags
 	includeCursewords := pflag.Bool("cursewords", false, "Include curseword dictionaries")
+
+	// Feature flags
+	includeIPA := pflag.Bool("ipa", false, "Generate IPA transcriptions for words")
 
 	pflag.Parse()
 
@@ -92,6 +96,7 @@ func main() {
 		"parallel_ingest": *parallelIngest,
 		"parallel_build":  *parallelBuild,
 		"cursewords":      *includeCursewords,
+		"ipa":             *includeIPA,
 	})
 
 	// Show configuration
@@ -156,6 +161,15 @@ func main() {
 			}
 			totalRaw += int64(r.Result.TotalRaw)
 			totalValid += int64(r.Result.TotalValid)
+
+			// Apply IPA transcriptions if enabled
+			if *includeIPA {
+				transcriber := ipa.NewTranscriber(r.Language)
+				for _, word := range r.Result.Words {
+					word.IPA = transcriber.Transcribe(word.Normalized)
+				}
+			}
+
 			dictBuilder.AddWords(r.Result.Words, r.Language)
 			synthBuilder.AddWords(r.Result.Words)
 		}
@@ -215,6 +229,14 @@ func main() {
 
 			totalRaw += int64(result.TotalRaw)
 			totalValid += int64(result.TotalValid)
+
+			// Apply IPA transcriptions if enabled
+			if *includeIPA {
+				transcriber := ipa.NewTranscriber(lang)
+				for _, word := range result.Words {
+					word.IPA = transcriber.Transcribe(word.Normalized)
+				}
+			}
 
 			if !*benchmark {
 				term.LanguageStatus(lang, "ok", fmt.Sprintf("%d words ingested", result.TotalValid))
