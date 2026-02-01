@@ -3,12 +3,8 @@
 import pytest
 import json
 import tempfile
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from schema import Word, WordSource, WordType, Dictionary
+from ditong.schema import Word, WordSource, WordType, Dictionary
 
 
 class TestWordType:
