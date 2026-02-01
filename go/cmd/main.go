@@ -36,6 +36,7 @@ func main() {
 	// Parallel processing flags
 	parallel := pflag.BoolP("parallel", "p", true, "Enable parallel processing")
 	workers := pflag.IntP("workers", "w", 0, "Number of parallel workers (0 = auto)")
+	parallelIngest := pflag.Bool("parallel-ingest", true, "Enable parallel line processing within files")
 
 	pflag.Parse()
 
@@ -79,11 +80,12 @@ func main() {
 	// Initialize metrics collector
 	collector := metrics.NewCollector()
 	collector.SetConfigMap(map[string]interface{}{
-		"languages":  langs,
-		"min_length": *minLength,
-		"max_length": *maxLength,
-		"parallel":   *parallel,
-		"workers":    *workers,
+		"languages":       langs,
+		"min_length":      *minLength,
+		"max_length":      *maxLength,
+		"parallel":        *parallel,
+		"workers":         *workers,
+		"parallel_ingest": *parallelIngest,
 	})
 
 	// Show configuration
@@ -169,7 +171,30 @@ func main() {
 			config.MaxLength = *maxLength
 
 			langCacheDir := filepath.Join(*cacheDir, lang)
-			result, err := ingest.DownloadAndIngest(lang, langCacheDir, config, *force)
+
+			// Download first
+			dictPath, err := ingest.Download(lang, langCacheDir, *force)
+			if err != nil {
+				if spinner != nil {
+					spinner.Stop()
+				}
+				if !*benchmark {
+					term.LanguageStatus(lang, "error", err.Error())
+				}
+				continue
+			}
+
+			// Ingest with parallel line processing if enabled
+			var result *ingest.IngestResult
+			if *parallelIngest {
+				parseConfig := ingest.ParseConfig{
+					Workers:   *workers,
+					ChunkSize: 1000,
+				}
+				result, err = ingest.ParallelIngestHunspell(dictPath, config, parseConfig)
+			} else {
+				result, err = ingest.IngestHunspell(dictPath, config)
+			}
 
 			if spinner != nil {
 				spinner.Stop()
