@@ -3,8 +3,6 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 [![Python Version](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org/)
-[![CI](https://github.com/snn/ditong/actions/workflows/ci.yml/badge.svg)](https://github.com/snn/ditong/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/snn/ditong/branch/main/graph/badge.svg)](https://codecov.io/gh/snn/ditong)
 
 A multi-language lexicon toolkit for building cross-language word dictionaries with full metadata tracking.
 
