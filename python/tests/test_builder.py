@@ -3,14 +3,11 @@
 import pytest
 import tempfile
 import json
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from schema import Word, WordSource
-from builder.dictionary import DictionaryBuilder
-from builder.synthesis import SynthesisBuilder, SynthesisConfig
+from ditong.schema import Word, WordSource
+from ditong.builder.dictionary import DictionaryBuilder
+from ditong.builder.synthesis import SynthesisBuilder, SynthesisConfig
 
 
 def create_test_word(normalized: str, language: str, category: str = "standard") -> Word:
@@ -42,7 +39,7 @@ class TestDictionaryBuilder:
                 max_length=10,
             )
 
-            from ingest.base import IngestResult
+            from ditong.ingest.base import IngestResult
             result = IngestResult(
                 words=[
                     create_test_word("hello", "en"),

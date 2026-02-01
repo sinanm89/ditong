@@ -2,14 +2,11 @@
 
 import pytest
 import tempfile
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from ingest.base import Ingestor, IngestResult
-from ingest.hunspell import HunspellIngestor, HUNSPELL_URLS
-from ingest.plain_text import PlainTextIngestor
+from ditong.ingest.base import Ingestor, IngestResult
+from ditong.ingest.hunspell import HunspellIngestor, HUNSPELL_URLS
+from ditong.ingest.plain_text import PlainTextIngestor
 
 
 class TestIngestResult:
