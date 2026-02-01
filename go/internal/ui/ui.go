@@ -66,12 +66,24 @@ func (u *UI) Phase(number int, total int, name string) {
 	)
 }
 
+// SpinnerWrapper wraps pterm spinner for cleaner interface.
+type SpinnerWrapper struct {
+	spinner *pterm.SpinnerPrinter
+}
+
+// Stop stops the spinner.
+func (s *SpinnerWrapper) Stop() {
+	if s != nil && s.spinner != nil {
+		s.spinner.Stop()
+	}
+}
+
 // Spinner creates a spinner for long operations.
-func (u *UI) Spinner(message string) *pterm.SpinnerPrinter {
+func (u *UI) Spinner(message string) *SpinnerWrapper {
 	spinner, _ := pterm.DefaultSpinner.
 		WithRemoveWhenDone(true).
 		Start(message)
-	return spinner
+	return &SpinnerWrapper{spinner: spinner}
 }
 
 // Progress creates a progress bar.
