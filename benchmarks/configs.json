@@ -1,0 +1,115 @@
+{
+  "groups": [
+    {
+      "name": "en_tr",
+      "description": "English + Turkish",
+      "languages": ["en", "tr"],
+      "configs": [
+        {
+          "id": "en_tr_sequential",
+          "name": "Sequential Baseline",
+          "parallel": false,
+          "workers": 1
+        },
+        {
+          "id": "en_tr_parallel_download",
+          "name": "Parallel Downloads",
+          "parallel": true,
+          "workers": 4
+        },
+        {
+          "id": "en_tr_parallel_2w",
+          "name": "Parallel 2 Workers",
+          "parallel": true,
+          "workers": 2
+        },
+        {
+          "id": "en_tr_parallel_4w",
+          "name": "Parallel 4 Workers",
+          "parallel": true,
+          "workers": 4
+        },
+        {
+          "id": "en_tr_parallel_8w",
+          "name": "Parallel 8 Workers",
+          "parallel": true,
+          "workers": 8
+        }
+      ]
+    },
+    {
+      "name": "en_fr_de",
+      "description": "English + French + German",
+      "languages": ["en", "fr", "de"],
+      "configs": [
+        {
+          "id": "en_fr_de_sequential",
+          "name": "Sequential Baseline",
+          "parallel": false,
+          "workers": 1
+        },
+        {
+          "id": "en_fr_de_parallel_download",
+          "name": "Parallel Downloads",
+          "parallel": true,
+          "workers": 4
+        },
+        {
+          "id": "en_fr_de_parallel_2w",
+          "name": "Parallel 2 Workers",
+          "parallel": true,
+          "workers": 2
+        },
+        {
+          "id": "en_fr_de_parallel_4w",
+          "name": "Parallel 4 Workers",
+          "parallel": true,
+          "workers": 4
+        },
+        {
+          "id": "en_fr_de_parallel_8w",
+          "name": "Parallel 8 Workers",
+          "parallel": true,
+          "workers": 8
+        }
+      ]
+    },
+    {
+      "name": "en_fr_de_tr",
+      "description": "English + French + German + Turkish",
+      "languages": ["en", "fr", "de", "tr"],
+      "configs": [
+        {
+          "id": "en_fr_de_tr_sequential",
+          "name": "Sequential Baseline",
+          "parallel": false,
+          "workers": 1
+        },
+        {
+          "id": "en_fr_de_tr_parallel_download",
+          "name": "Parallel Downloads",
+          "parallel": true,
+          "workers": 4
+        },
+        {
+          "id": "en_fr_de_tr_parallel_2w",
+          "name": "Parallel 2 Workers",
+          "parallel": true,
+          "workers": 2
+        },
+        {
+          "id": "en_fr_de_tr_parallel_4w",
+          "name": "Parallel 4 Workers",
+          "parallel": true,
+          "workers": 4
+        },
+        {
+          "id": "en_fr_de_tr_parallel_8w",
+          "name": "Parallel 8 Workers",
+          "parallel": true,
+          "workers": 8
+        }
+      ]
+    }
+  ]
+}

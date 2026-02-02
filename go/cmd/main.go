@@ -12,6 +12,7 @@ import (
 
 	"ditong/internal/builder"
 	"ditong/internal/ingest"
+	"ditong/internal/ipa"
 	"ditong/internal/metrics"
 	"ditong/internal/ui"
 
@@ -37,6 +38,13 @@ func main() {
 	parallel := pflag.BoolP("parallel", "p", true, "Enable parallel processing")
 	workers := pflag.IntP("workers", "w", 0, "Number of parallel workers (0 = auto)")
 	parallelIngest := pflag.Bool("parallel-ingest", true, "Enable parallel line processing within files")
+	parallelBuild := pflag.Bool("parallel-build", true, "Enable parallel file writing during build")
+
+	// Content flags
+	includeCursewords := pflag.Bool("cursewords", false, "Include curseword dictionaries")
+
+	// Feature flags
+	includeIPA := pflag.Bool("ipa", false, "Generate IPA transcriptions for words")
 
 	pflag.Parse()
 
@@ -86,6 +94,9 @@ func main() {
 		"parallel":        *parallel,
 		"workers":         *workers,
 		"parallel_ingest": *parallelIngest,
+		"parallel_build":  *parallelBuild,
+		"cursewords":      *includeCursewords,
+		"ipa":             *includeIPA,
 	})
 
 	// Show configuration
@@ -150,6 +161,15 @@ func main() {
 			}
 			totalRaw += int64(r.Result.TotalRaw)
 			totalValid += int64(r.Result.TotalValid)
+
+			// Apply IPA transcriptions if enabled
+			if *includeIPA {
+				transcriber := ipa.NewTranscriber(r.Language)
+				for _, word := range r.Result.Words {
+					word.IPA = transcriber.Transcribe(word.Normalized)
+				}
+			}
+
 			dictBuilder.AddWords(r.Result.Words, r.Language)
 			synthBuilder.AddWords(r.Result.Words)
 		}
@@ -210,6 +230,14 @@ func main() {
 			totalRaw += int64(result.TotalRaw)
 			totalValid += int64(result.TotalValid)
 
+			// Apply IPA transcriptions if enabled
+			if *includeIPA {
+				transcriber := ipa.NewTranscriber(lang)
+				for _, word := range result.Words {
+					word.IPA = transcriber.Transcribe(word.Normalized)
+				}
+			}
+
 			if !*benchmark {
 				term.LanguageStatus(lang, "ok", fmt.Sprintf("%d words ingested", result.TotalValid))
 			}
@@ -223,6 +251,45 @@ func main() {
 	collector.SetStageCounter("download", "words_valid", totalValid)
 	collector.SetStageCounter("download", "languages", int64(len(langs)))
 
+	// Optional: Ingest cursewords
+	var cursewordCount int64
+	if *includeCursewords {
+		collector.StartStage("cursewords")
+		if !*benchmark {
+			term.Info("Including curseword dictionaries...")
+		}
+
+		for _, lang := range langs {
+			if !ingest.HasCursewordSupport(lang) {
+				continue
+			}
+
+			config := ingest.CursewordConfig(lang)
+			config.MinLength = *minLength
+			config.MaxLength = *maxLength
+
+			langCacheDir := filepath.Join(*cacheDir, lang)
+			result, err := ingest.DownloadAndIngestCursewords(lang, langCacheDir, config, *force)
+
+			if err != nil {
+				if !*benchmark {
+					term.Warning(fmt.Sprintf("Cursewords [%s]: %v", lang, err))
+				}
+				continue
+			}
+
+			cursewordCount += int64(result.TotalValid)
+			if !*benchmark {
+				term.LanguageStatus(lang, "cursewords", fmt.Sprintf("%d words", result.TotalValid))
+			}
+			dictBuilder.AddWords(result.Words, lang)
+			synthBuilder.AddWords(result.Words)
+		}
+
+		collector.EndStage("cursewords")
+		collector.SetStageCounter("cursewords", "words", cursewordCount)
+	}
+
 	// Phase 2: Build per-language dictionaries
 	collector.StartStage("build")
 	if !*benchmark {
@@ -233,7 +300,15 @@ func main() {
 	if !*benchmark {
 		buildSpinner = term.Spinner("Writing dictionary files...")
 	}
-	stats := dictBuilder.Build()
+
+	var stats *builder.BuildStats
+	if *parallelBuild && *workers > 1 {
+		buildConfig := builder.ParallelBuildConfig{Workers: *workers}
+		stats = dictBuilder.ParallelBuild(buildConfig)
+	} else {
+		stats = dictBuilder.Build()
+	}
+
 	if buildSpinner != nil {
 		buildSpinner.Stop()
 	}
@@ -273,7 +348,15 @@ func main() {
 	if !*benchmark {
 		synthSpinner = term.Spinner(fmt.Sprintf("Building synthesis: %s...", synthName))
 	}
-	synthStats := synthBuilder.Build(synthConfig)
+
+	var synthStats *builder.SynthesisStats
+	if *parallelBuild && *workers > 1 {
+		buildConfig := builder.ParallelBuildConfig{Workers: *workers}
+		synthStats = synthBuilder.ParallelBuild(synthConfig, buildConfig)
+	} else {
+		synthStats = synthBuilder.Build(synthConfig)
+	}
+
 	if synthSpinner != nil {
 		synthSpinner.Stop()
 	}
