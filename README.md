@@ -7,73 +7,33 @@ A multi-language lexicon toolkit for building cross-language word dictionaries w
 
 ## Quick Start
 
-### Install
-
 ```bash
-# From source
+# Install
 cd go && go build -o ditong ./cmd
 
-# Or download binary from releases
-```
-
-### Run (Interactive)
-
-```bash
+# Run interactive mode
 ./ditong
-```
 
-The interactive CLI guides you through language selection, word length filters, and output options.
-
-### Run (CLI flags)
-
-```bash
-# Basic: English + Turkish, 5-8 character words
-./ditong --languages en,tr --min-length 5 --max-length 8
-
-# With IPA transcription and cursewords
-./ditong --languages en,tr,de --ipa --cursewords
-
-# Parallel processing (faster)
-./ditong --languages en,tr --parallel --workers 8
-
-# Quiet mode for scripts
-./ditong --languages en --quiet --output-dir ./my-dicts
-```
-
-### As a Library
-
-```go
-package main
-
-import (
-    "ditong/internal/ingest"
-    "ditong/internal/builder"
-)
-
-func main() {
-    // Ingest dictionaries
-    enResult, _ := ingest.DownloadAndIngest("en", "./sources/en", ingest.DefaultConfig("en"), false)
-    trResult, _ := ingest.DownloadAndIngest("tr", "./sources/tr", ingest.DefaultConfig("tr"), false)
-
-    // Build dictionaries
-    dictBuilder := builder.NewDictionaryBuilder("./dicts", 5, 8)
-    dictBuilder.AddWords(enResult.Words, "en")
-    dictBuilder.AddWords(trResult.Words, "tr")
-    dictBuilder.Build()
-}
+# Or with flags
+./ditong --languages en,tr --min-length 5 --max-length 8 --parallel
 ```
 
 ## Features
 
-- **Multi-language normalization** — Turkish, German, French, Spanish, and more → ASCII
-- **Pluggable ingestors** — Hunspell dictionaries, plain text, extensible
-- **Per-word metadata** — Track sources, categories, languages, and custom tags
-- **Synthesis builder** — Generate filtered cross-language word unions
-- **IPA transcription** — Optional phonetic transcription support
-- **Parallel processing** — Fast ingestion and build with configurable workers
-- **Curseword dictionaries** — Optional inclusion of profanity dictionaries
-- **Similarity search** — BK-tree based fuzzy matching
-- **Benchmarking** — Built-in benchmark suite for performance testing
+- **Multi-language normalization** — Turkish, German, French, Spanish → ASCII
+- **Parallel processing** — Bounded worker pools with channel-based job distribution
+- **Similarity search** — BK-tree for fuzzy matching (~3.7µs per query)
+- **IPA transcription** — Rule-based phonetic transcription
+- **Synthesis builder** — Cross-language word unions with filtering
+
+## Performance
+
+```
+BenchmarkLevenshteinDistance    11M ops    107 ns/op    128 B/op
+BenchmarkBKTreeSearch           350K ops   3.7 µs/op    4.1 KB/op
+```
+
+The Levenshtein implementation uses a two-row matrix (O(min(n,m)) space) rather than the full matrix. BK-tree queries exploit the triangle inequality for pruning, typically searching <10% of nodes.
 
 ## CLI Options
 
@@ -82,119 +42,47 @@ func main() {
 | `--languages` | `en` | Comma-separated language codes |
 | `--min-length` | `5` | Minimum word length |
 | `--max-length` | `8` | Maximum word length |
-| `--output-dir` | `./output` | Output directory |
-| `--ipa` | `false` | Generate IPA transcriptions |
-| `--cursewords` | `false` | Include curseword dictionaries |
 | `--parallel` | `true` | Enable parallel processing |
 | `--workers` | `0` (auto) | Number of parallel workers |
-| `--consolidate` | `false` | Generate consolidated output files |
+| `--ipa` | `false` | Generate IPA transcriptions |
+| `--cursewords` | `false` | Include profanity dictionaries |
 | `--quiet` | `false` | Suppress progress output |
-| `--force` | `false` | Re-download dictionaries |
 
-## Rationale
+## How It Works
 
-- **Linguistic Pluralism** — Why limit your vernacular to a single language when multiple languages offer broader expression?
-- **Cursewords** — Comprehensive profanity dictionaries that are hard to find elsewhere
-- **Portability** — Build your dictionary once, use it anywhere
-- **Efficient Sharing** — Generate unique identifier spaces from multiple language dictionaries
+**Normalization**: Characters like `ç`, `ş`, `ğ` (Turkish) or `ä`, `ö`, `ü` (German) map to ASCII equivalents. This means `care` (EN) and `çare` (TR) become the same identifier, with both sources tracked.
 
-## Output Format
+**Parallel Build**: Uses a bounded worker pool pattern—goroutines pull from a buffered channel rather than spawning unbounded. This keeps memory predictable under load.
 
-### Word Schema
+**Similarity Search**: BK-trees partition words by edit distance. For a query, only branches where `|node_distance - query_distance| ≤ max_distance` need searching. This gives sublinear lookup for fuzzy matching.
+
+## Output
 
 ```json
 {
   "normalized": "care",
   "length": 4,
-  "type": "4-c",
   "sources": [
-    {
-      "dict_name": "hunspell_en",
-      "language": "en",
-      "original_form": "care",
-      "category": "standard"
-    },
-    {
-      "dict_name": "hunspell_tr",
-      "language": "tr",
-      "original_form": "çare",
-      "category": "standard"
-    }
+    {"language": "en", "original_form": "care"},
+    {"language": "tr", "original_form": "çare"}
   ],
-  "categories": ["standard"],
   "languages": ["en", "tr"],
   "ipa": "/kɛər/"
 }
 ```
 
-### Directory Structure
-
-```
-output/
-├── en/
-│   ├── 3-c.json
-│   ├── 4-c.json
-│   └── ...
-├── tr/
-│   └── ...
-└── synthesis/
-    └── en_tr_standard/
-        ├── _config.json
-        ├── 5-c/
-        │   ├── a.json
-        │   ├── b.json
-        │   └── ...
-        └── ...
-```
-
-## Normalization
-
-Characters are normalized to ASCII equivalents:
-
-| Language | Original | Normalized |
-|----------|----------|------------|
-| Turkish | ç, ş, ğ, ı, ö, ü | c, s, g, i, o, u |
-| German | ä, ö, ü, ß | a, o, u, ss |
-| French | é, è, ê, à, ç | e, e, e, a, c |
-| Spanish | ñ, á, é, í, ó, ú | n, a, e, i, o, u |
-
-This means `care` (EN) and `çare` (TR) normalize to the same identifier, tracked with both sources.
-
 ## Supported Languages
 
-| Code | Language | Hunspell | IPA |
-|------|----------|----------|-----|
-| en | English | ✓ | ✓ |
-| tr | Turkish | ✓ | ✓ |
-| de | German | ✓ | ✓ |
-| fr | French | ✓ | ✓ |
-| es | Spanish | ✓ | ✓ |
-| it | Italian | ✓ | ✓ |
-| pt | Portuguese | ✓ | ✓ |
-| nl | Dutch | ✓ | ✓ |
-| pl | Polish | ✓ | ✓ |
-| ru | Russian | ✓ | ✓ |
+en, tr, de, fr, es, it, pt, nl, pl, ru
 
 ## Development
 
 ```bash
 cd go
-
-# Run tests
 go test -v ./...
-
-# Build
-go build ./cmd
-
-# Build fuzzy search tool
-go build ./cmd/fuzzy
-
-# Run benchmarks
-cd ../benchmarks && go run runner.go
+go test -bench=. ./internal/similarity/
 ```
 
 ## License
 
-GPL-3.0 License - see [LICENSE](LICENSE) for details.
-
-Commercial licensing: sales@rahatol.com
+GPL-3.0 — see [LICENSE](LICENSE). Commercial licensing: sales@rahatol.com

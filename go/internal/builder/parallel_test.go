@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,7 +29,7 @@ func TestDictionaryBuilderParallelBuild(t *testing.T) {
 	builder.AddWords(words2, "de")
 
 	config := ParallelBuildConfig{Workers: 4}
-	stats := builder.ParallelBuild(config)
+	stats := builder.ParallelBuild(context.Background(), config)
 
 	if stats.TotalWords != 6 {
 		t.Errorf("Expected 6 total words, got %d", stats.TotalWords)
@@ -61,7 +62,7 @@ func TestDictionaryBuilderParallelBuildFallback(t *testing.T) {
 
 	// With workers=1, should fall back to sequential
 	config := ParallelBuildConfig{Workers: 1}
-	stats := builder.ParallelBuild(config)
+	stats := builder.ParallelBuild(context.Background(), config)
 
 	if stats.TotalWords != 1 {
 		t.Errorf("Expected 1 word, got %d", stats.TotalWords)
@@ -94,7 +95,7 @@ func TestSynthesisBuilderParallelBuild(t *testing.T) {
 	synthConfig.SplitByLetter = true
 
 	parallelConfig := ParallelBuildConfig{Workers: 4}
-	stats := builder.ParallelBuild(synthConfig, parallelConfig)
+	stats := builder.ParallelBuild(context.Background(), synthConfig, parallelConfig)
 
 	if stats.TotalWords != 5 {
 		t.Errorf("Expected 5 words, got %d", stats.TotalWords)
@@ -128,7 +129,7 @@ func TestSynthesisBuilderParallelBuildNoSplit(t *testing.T) {
 	synthConfig.SplitByLetter = false
 
 	parallelConfig := ParallelBuildConfig{Workers: 4}
-	stats := builder.ParallelBuild(synthConfig, parallelConfig)
+	stats := builder.ParallelBuild(context.Background(), synthConfig, parallelConfig)
 
 	if stats.TotalWords != 2 {
 		t.Errorf("Expected 2 words, got %d", stats.TotalWords)
@@ -171,7 +172,7 @@ func BenchmarkDictionaryBuild(b *testing.B) {
 	b.Run("Parallel-4workers", func(b *testing.B) {
 		config := ParallelBuildConfig{Workers: 4}
 		for i := 0; i < b.N; i++ {
-			builder.ParallelBuild(config)
+			builder.ParallelBuild(context.Background(), config)
 		}
 	})
 }

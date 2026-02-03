@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -582,7 +583,7 @@ func main() {
 	var stats *builder.BuildStats
 	if *parallelBuild && *workers > 1 {
 		buildConfig := builder.ParallelBuildConfig{Workers: *workers}
-		stats = dictBuilder.ParallelBuild(buildConfig)
+		stats = dictBuilder.ParallelBuild(context.Background(), buildConfig)
 	} else {
 		stats = dictBuilder.Build()
 	}
@@ -630,7 +631,7 @@ func main() {
 	var synthStats *builder.SynthesisStats
 	if *parallelBuild && *workers > 1 {
 		buildConfig := builder.ParallelBuildConfig{Workers: *workers}
-		synthStats = synthBuilder.ParallelBuild(synthConfig, buildConfig)
+		synthStats = synthBuilder.ParallelBuild(context.Background(), synthConfig, buildConfig)
 	} else {
 		synthStats = synthBuilder.Build(synthConfig)
 	}

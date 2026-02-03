@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -31,11 +32,19 @@ type writeJob struct {
 }
 
 // ParallelBuild builds all dictionary files concurrently.
-func (b *DictionaryBuilder) ParallelBuild(config ParallelBuildConfig) *BuildStats {
+// Accepts a context for cancellation support.
+func (b *DictionaryBuilder) ParallelBuild(ctx context.Context, config ParallelBuildConfig) *BuildStats {
 	stats := NewBuildStats()
 
 	if config.Workers <= 1 {
 		return b.Build() // Fall back to sequential
+	}
+
+	// Check for cancellation before starting
+	select {
+	case <-ctx.Done():
+		return stats
+	default:
 	}
 
 	// Collect all write jobs
@@ -82,18 +91,29 @@ func (b *DictionaryBuilder) ParallelBuild(config ParallelBuildConfig) *BuildStat
 		go func() {
 			defer wg.Done()
 			for job := range jobsChan {
-				if err := job.dictionary.Save(job.filePath); err == nil {
-					mu.Lock()
-					stats.FilesWritten = append(stats.FilesWritten, job.filePath)
-					mu.Unlock()
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					if err := job.dictionary.Save(job.filePath); err == nil {
+						mu.Lock()
+						stats.FilesWritten = append(stats.FilesWritten, job.filePath)
+						mu.Unlock()
+					}
 				}
 			}
 		}()
 	}
 
-	// Send jobs
+	// Send jobs (check context between sends)
 	for _, job := range jobs {
-		jobsChan <- job
+		select {
+		case <-ctx.Done():
+			close(jobsChan)
+			wg.Wait()
+			return stats
+		case jobsChan <- job:
+		}
 	}
 	close(jobsChan)
 	wg.Wait()
@@ -108,9 +128,17 @@ type synthWriteJob struct {
 }
 
 // ParallelBuild builds a synthesis dictionary with concurrent file writing.
-func (b *SynthesisBuilder) ParallelBuild(config *SynthesisConfig, parallelConfig ParallelBuildConfig) *SynthesisStats {
+// Accepts a context for cancellation support.
+func (b *SynthesisBuilder) ParallelBuild(ctx context.Context, config *SynthesisConfig, parallelConfig ParallelBuildConfig) *SynthesisStats {
 	if parallelConfig.Workers <= 1 {
 		return b.Build(config) // Fall back to sequential
+	}
+
+	// Check for cancellation before starting
+	select {
+	case <-ctx.Done():
+		return &SynthesisStats{ConfigName: config.Name}
+	default:
 	}
 
 	stats := &SynthesisStats{
@@ -236,18 +264,29 @@ func (b *SynthesisBuilder) ParallelBuild(config *SynthesisConfig, parallelConfig
 		go func() {
 			defer wg.Done()
 			for job := range jobsChan {
-				if err := job.dictionary.Save(job.filePath); err == nil {
-					mu.Lock()
-					stats.FilesWritten = append(stats.FilesWritten, job.filePath)
-					mu.Unlock()
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					if err := job.dictionary.Save(job.filePath); err == nil {
+						mu.Lock()
+						stats.FilesWritten = append(stats.FilesWritten, job.filePath)
+						mu.Unlock()
+					}
 				}
 			}
 		}()
 	}
 
-	// Send jobs
+	// Send jobs (check context between sends)
 	for _, job := range jobs {
-		jobsChan <- job
+		select {
+		case <-ctx.Done():
+			close(jobsChan)
+			wg.Wait()
+			return stats
+		case jobsChan <- job:
+		}
 	}
 	close(jobsChan)
 	wg.Wait()
