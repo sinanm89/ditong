@@ -2,84 +2,45 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
-[![Python Version](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org/)
 
 A multi-language lexicon toolkit for building cross-language word dictionaries with full metadata tracking.
 
-## Rationale
-
-- **Convenient & Efficient sharing** - Sharing urls orally is difficult, this project aims to make long and convoluted urls easy to share with both machines and humans.
-- **Linguistic Pluralism & Freedom** - Why limit your vernacular to a single language and its barriers when multiple languages offer a broader spectrum for expression ? Why even make things pg13 and limit your dictionary further when new words and phrases are being invented and accepted by the collective ?
-- **Cursewords** - For all the lawful and societal rules and regulations around this subject, there really isnt a great dictionary source that gathers these in one place(that i could find and use easily). Furthermore this library ensures new cursewords that are generated are used in projects and kept updated (via a cron or scheduled task manager)
-- **Portability** - Make your selected isolated dictionary once, use it anywhere and further process it anyway you like. Adjust as you see fit, then use it in your own projects.
-- **Practice** - Im learning ML and modelling vectors. This felt like a good side project.
-
-## Features
-
-- **Multi-language normalization** — Turkish, German, French, Spanish, and more → ASCII
-- **Pluggable ingestors** — Hunspell dictionaries, plain text, extensible for Urban Dictionary, Ekşi Sözlük, etc.
-- **Per-word metadata** — Track sources, categories, languages, and custom tags
-- **Synthesis builder** — Generate filtered cross-language word unions
-- **Pluggable IPA transcription** — epitran, espeak-ng, phonemizer, g2p, gruut backends
-- **Dual implementation** — Python and Go with identical output formats
-
-## Use Cases
-
-- Generate unique identifier spaces from multiple language dictionaries
-- Find phonetically similar words across languages
-- Build filtered word lists (exclude profanity, include only standard dictionary words, etc.)
-- Create synthesis dictionaries for specific language combinations
-
-## Installation
-
-### Python
-
-```bash
-cd python
-pip install -e .
-```
-
-### Go
-
-```bash
-cd go
-go build ./cmd
-```
-
 ## Quick Start
 
-### Python
+### Install
 
-```python
-from ditong.ingest import hunspell
-from ditong.builder import DictionaryBuilder, SynthesisBuilder, SynthesisConfig
+```bash
+# From source
+cd go && go build -o ditong ./cmd
 
-# Ingest dictionaries
-en_result = hunspell.download_and_ingest("en", cache_dir="./sources/en")
-tr_result = hunspell.download_and_ingest("tr", cache_dir="./sources/tr")
-
-# Build per-language dictionaries
-builder = DictionaryBuilder(output_dir="./dicts")
-builder.add_words(en_result)
-builder.add_words(tr_result)
-stats = builder.build()
-
-# Build synthesis (unique words across both languages)
-synth = SynthesisBuilder(output_dir="./dicts")
-synth.add_words(en_result.words)
-synth.add_words(tr_result.words)
-
-config = SynthesisConfig(
-    name="en_tr_standard",
-    include_languages={"en", "tr"},
-    include_categories={"standard"},
-    min_length=5,
-    max_length=8,
-)
-synth.build(config)
+# Or download binary from releases
 ```
 
-### Go
+### Run (Interactive)
+
+```bash
+./ditong
+```
+
+The interactive CLI guides you through language selection, word length filters, and output options.
+
+### Run (CLI flags)
+
+```bash
+# Basic: English + Turkish, 5-8 character words
+./ditong --languages en,tr --min-length 5 --max-length 8
+
+# With IPA transcription and cursewords
+./ditong --languages en,tr,de --ipa --cursewords
+
+# Parallel processing (faster)
+./ditong --languages en,tr --parallel --workers 8
+
+# Quiet mode for scripts
+./ditong --languages en --quiet --output-dir ./my-dicts
+```
+
+### As a Library
 
 ```go
 package main
@@ -91,11 +52,8 @@ import (
 
 func main() {
     // Ingest dictionaries
-    enConfig := ingest.DefaultConfig("en")
-    enResult, _ := ingest.DownloadAndIngest("en", "./sources/en", enConfig, false)
-
-    trConfig := ingest.DefaultConfig("tr")
-    trResult, _ := ingest.DownloadAndIngest("tr", "./sources/tr", trConfig, false)
+    enResult, _ := ingest.DownloadAndIngest("en", "./sources/en", ingest.DefaultConfig("en"), false)
+    trResult, _ := ingest.DownloadAndIngest("tr", "./sources/tr", ingest.DefaultConfig("tr"), false)
 
     // Build dictionaries
     dictBuilder := builder.NewDictionaryBuilder("./dicts", 5, 8)
@@ -105,15 +63,40 @@ func main() {
 }
 ```
 
-### CLI
+## Features
 
-```bash
-# Python
-python -m ditong.main --languages en,tr --min-length 5 --max-length 8
+- **Multi-language normalization** — Turkish, German, French, Spanish, and more → ASCII
+- **Pluggable ingestors** — Hunspell dictionaries, plain text, extensible
+- **Per-word metadata** — Track sources, categories, languages, and custom tags
+- **Synthesis builder** — Generate filtered cross-language word unions
+- **IPA transcription** — Optional phonetic transcription support
+- **Parallel processing** — Fast ingestion and build with configurable workers
+- **Curseword dictionaries** — Optional inclusion of profanity dictionaries
+- **Similarity search** — BK-tree based fuzzy matching
+- **Benchmarking** — Built-in benchmark suite for performance testing
 
-# Go
-go run ./cmd --languages en,tr --min-length 5 --max-length 8
-```
+## CLI Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--languages` | `en` | Comma-separated language codes |
+| `--min-length` | `5` | Minimum word length |
+| `--max-length` | `8` | Maximum word length |
+| `--output-dir` | `./output` | Output directory |
+| `--ipa` | `false` | Generate IPA transcriptions |
+| `--cursewords` | `false` | Include curseword dictionaries |
+| `--parallel` | `true` | Enable parallel processing |
+| `--workers` | `0` (auto) | Number of parallel workers |
+| `--consolidate` | `false` | Generate consolidated output files |
+| `--quiet` | `false` | Suppress progress output |
+| `--force` | `false` | Re-download dictionaries |
+
+## Rationale
+
+- **Linguistic Pluralism** — Why limit your vernacular to a single language when multiple languages offer broader expression?
+- **Cursewords** — Comprehensive profanity dictionaries that are hard to find elsewhere
+- **Portability** — Build your dictionary once, use it anywhere
+- **Efficient Sharing** — Generate unique identifier spaces from multiple language dictionaries
 
 ## Output Format
 
@@ -127,32 +110,27 @@ go run ./cmd --languages en,tr --min-length 5 --max-length 8
   "sources": [
     {
       "dict_name": "hunspell_en",
-      "dict_filepath": "/path/to/en.dic",
       "language": "en",
       "original_form": "care",
-      "line_number": 12345,
       "category": "standard"
     },
     {
       "dict_name": "hunspell_tr",
-      "dict_filepath": "/path/to/tr.dic",
       "language": "tr",
       "original_form": "çare",
-      "line_number": 6789,
       "category": "standard"
     }
   ],
   "categories": ["standard"],
   "languages": ["en", "tr"],
-  "tags": [],
-  "ipa": null
+  "ipa": "/kɛər/"
 }
 ```
 
 ### Directory Structure
 
 ```
-dicts/
+output/
 ├── en/
 │   ├── 3-c.json
 │   ├── 4-c.json
@@ -182,25 +160,6 @@ Characters are normalized to ASCII equivalents:
 
 This means `care` (EN) and `çare` (TR) normalize to the same identifier, tracked with both sources.
 
-## Phonetics (Optional)
-
-```python
-from ditong.phonetics import transcribe, get_transcriber, list_transcribers
-
-# Available backends: epitran, espeak, phonemizer, g2p_en, gruut
-print(list_transcribers())
-
-# Transcribe using default (epitran)
-ipa = transcribe("hello", "en")
-
-# Use specific backend
-ipa = transcribe("hello", "en", backend="espeak")
-
-# Batch transcribe
-from ditong.phonetics import batch_transcribe
-results = batch_transcribe(["hello", "world"], "en")
-```
-
 ## Supported Languages
 
 | Code | Language | Hunspell | IPA |
@@ -219,25 +178,23 @@ results = batch_transcribe(["hello", "world"], "en")
 ## Development
 
 ```bash
+cd go
+
 # Run tests
-make test
+go test -v ./...
 
-# Run tests with coverage
-make coverage
+# Build
+go build ./cmd
 
-# Lint
-make lint
+# Build fuzzy search tool
+go build ./cmd/fuzzy
 
-# Format
-make fmt
+# Run benchmarks
+cd ../benchmarks && go run runner.go
 ```
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+GPL-3.0 License - see [LICENSE](LICENSE) for details.
 
-For commercial licensing, contact: sales@rahatol.com
+Commercial licensing: sales@rahatol.com
