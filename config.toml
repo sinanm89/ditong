@@ -1,0 +1,30 @@
+# ditong configuration
+# https://github.com/sinanm89/ditong
+
+[defaults]
+# Comma-separated language codes to process
+languages = "en,tr"
+
+# Word length constraints
+min_length = 3
+max_length = 5
+
+# Output paths (relative to project root)
+output_dir = "output/dicts"
+cache_dir = "sources"
+
+# Processing options
+parallel = true
+workers = 0  # 0 = auto-detect (capped at 8)
+
+# Feature flags
+ipa = false         # IPA transcriptions
+cursewords = false  # Include curseword dictionaries
+consolidate = false # Generate consolidated output
+force = false       # Force re-download (ignore cache)
+quiet = false       # Suppress progress output
+verbose = false     # Verbose logging
+metrics = true      # Write metrics to output
+
+# Supported languages
+available_languages = ["en", "tr", "de", "fr", "es", "it", "pt", "nl", "pl", "ru"]
