@@ -1,0 +1,97 @@
+# GoReleaser configuration for ditong
+# Docs: https://goreleaser.com
+
+version: 2
+
+project_name: ditong
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ditong
+    main: ./cmd
+    dir: go
+    binary: ditong
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+  - id: ditong-fuzzy
+    main: ./cmd/fuzzy
+    dir: go
+    binary: ditong-fuzzy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+      - config.toml
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  # Only used for GitHub releases
+  github:
+    owner: sinanm89
+    name: ditong
+
+  # Release name template
+  name_template: "{{.ProjectName}} v{{.Version}}"
+
+  # Draft release first (review before publishing)
+  draft: false
+
+  # Mark as prerelease if version contains -rc, -beta, etc.
+  prerelease: auto
+
+# Announce (optional - can add later)
+# announce:
+#   skip: true
