@@ -4,6 +4,9 @@ sources/
 # Output (generated dictionaries) - optional, may want to commit
 # dicts/
 
+# Test output
+dicts_test/
+
 # Python
 __pycache__/
 *.py[cod]
