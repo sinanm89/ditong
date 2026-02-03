@@ -6,6 +6,14 @@
 
 A multi-language lexicon toolkit for building cross-language word dictionaries with full metadata tracking.
 
+## Rationale
+
+- **Convenient & Efficient sharing** - Sharing urls orally is difficult, this project aims to make long and convoluted urls easy to share with both machines and humans.
+- **Linguistic Pluralism & Freedom** - Why limit your vernacular to a single language and its barriers when multiple languages offer a broader spectrum for expression ? Why even make things pg13 and limit your dictionary further when new words and phrases are being invented and accepted by the collective ?
+- **Cursewords** - For all the lawful and societal rules and regulations around this subject, there really isnt a great dictionary source that gathers these in one place(that i could find and use easily). Furthermore this library ensures new cursewords that are generated are used in projects and kept updated (via a cron or scheduled task manager)
+- **Portability** - Make your selected isolated dictionary once, use it anywhere and further process it anyway you like. Adjust as you see fit, then use it in your own projects.
+- **Practice** - Im learning ML and modelling vectors. This felt like a good side project.
+
 ## Features
 
 - **Multi-language normalization** — Turkish, German, French, Spanish, and more → ASCII
