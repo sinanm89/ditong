@@ -174,23 +174,45 @@ func parseDictionary(path string) []string {
 		return nil
 	}
 
-	// Try to parse as dictionary with words array
-	var dict struct {
+	// Try format 1: words as map {"words": {"word1": {...}, "word2": {...}}}
+	var dictMap struct {
+		Words map[string]struct {
+			Normalized string `json:"normalized"`
+		} `json:"words"`
+	}
+	if err := json.Unmarshal(data, &dictMap); err == nil && len(dictMap.Words) > 0 {
+		words := make([]string, 0, len(dictMap.Words))
+		for _, w := range dictMap.Words {
+			if w.Normalized != "" {
+				words = append(words, w.Normalized)
+			}
+		}
+		return words
+	}
+
+	// Try format 2: words as array {"words": [{"normalized": "..."}, ...]}
+	var dictArray struct {
 		Words []struct {
 			Normalized string `json:"normalized"`
 		} `json:"words"`
 	}
-
-	if err := json.Unmarshal(data, &dict); err != nil {
-		return nil
-	}
-
-	words := make([]string, 0, len(dict.Words))
-	for _, w := range dict.Words {
-		if w.Normalized != "" {
-			words = append(words, w.Normalized)
+	if err := json.Unmarshal(data, &dictArray); err == nil && len(dictArray.Words) > 0 {
+		words := make([]string, 0, len(dictArray.Words))
+		for _, w := range dictArray.Words {
+			if w.Normalized != "" {
+				words = append(words, w.Normalized)
+			}
 		}
+		return words
 	}
 
-	return words
+	// Try format 3: simple string array {"words": ["word1", "word2"]}
+	var dictSimple struct {
+		Words []string `json:"words"`
+	}
+	if err := json.Unmarshal(data, &dictSimple); err == nil {
+		return dictSimple.Words
+	}
+
+	return nil
 }
