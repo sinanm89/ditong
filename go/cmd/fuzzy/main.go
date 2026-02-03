@@ -173,7 +173,8 @@ func runInteractive(dictDir string, defaultDistance, defaultLimit int, language,
 		results := search(tree, query, distance, limit)
 
 		if len(results) == 0 {
-			pterm.Warning.Printf("No matches for %q within distance %d\n\n", query, distance)
+			pterm.Warning.Printfln("No matches for %q within distance %d", query, distance)
+			fmt.Println()
 			continue
 		}
 
@@ -188,9 +189,42 @@ func runInteractive(dictDir string, defaultDistance, defaultLimit int, language,
 		}
 
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
-		pterm.Info.Printf("Found %s matches for %q\n\n",
-			pterm.FgCyan.Sprint(len(results)),
-			pterm.FgYellow.Sprint(query))
+		pterm.Info.Printfln("Found %d matches for %q", len(results), query)
+
+		// Show related shorter/longer words
+		showRelatedWords(tree, query, distance)
+		fmt.Println()
+	}
+}
+
+func showRelatedWords(tree *similarity.BKTree, query string, distance int) {
+	qLen := len(query)
+	var related []string
+
+	// Show shorter versions (prefixes that exist as words)
+	for i := qLen - 1; i >= 3; i-- {
+		prefix := query[:i]
+		if tree.Contains(prefix) {
+			related = append(related, fmt.Sprintf("%s (%d chars)", prefix, i))
+		}
+	}
+
+	// Show longer versions (query as prefix of other words)
+	if qLen >= 3 {
+		longer := tree.Search(query, distance)
+		for _, r := range longer {
+			if len(r.Word) > qLen && strings.HasPrefix(r.Word, query) {
+				related = append(related, fmt.Sprintf("%s (%d chars)", r.Word, len(r.Word)))
+				if len(related) > 5 {
+					break
+				}
+			}
+		}
+	}
+
+	if len(related) > 0 {
+		pterm.FgGray.Print("  Related: ")
+		pterm.FgCyan.Println(strings.Join(related, ", "))
 	}
 }
 
