@@ -12,10 +12,15 @@ from pathlib import Path
 from ingest import hunspell
 from builder.dictionary import DictionaryBuilder
 from builder.synthesis import SynthesisBuilder, SynthesisConfig
+from . import config as cfg
 
 
 def main() -> int:
     """Main entry point."""
+    # Load defaults from config.json
+    defaults = cfg.load().get("defaults", cfg.FALLBACK_DEFAULTS)
+    project_root = Path(__file__).parent.parent.parent
+
     parser = argparse.ArgumentParser(
         description="ditong - Multi-language lexicon toolkit"
     )
@@ -23,33 +28,33 @@ def main() -> int:
         "--languages",
         "-l",
         type=str,
-        default="en,tr",
-        help="Comma-separated language codes (default: en,tr)",
+        default=defaults.get("languages", "en,tr"),
+        help=f"Comma-separated language codes (default: {defaults.get('languages', 'en,tr')})",
     )
     parser.add_argument(
         "--min-length",
         type=int,
-        default=3,
-        help="Minimum word length (default: 3)",
+        default=defaults.get("min_length", 3),
+        help=f"Minimum word character length (default: {defaults.get('min_length', 3)})",
     )
     parser.add_argument(
         "--max-length",
         type=int,
-        default=10,
-        help="Maximum word length (default: 10)",
+        default=defaults.get("max_length", 5),
+        help=f"Maximum word character length (default: {defaults.get('max_length', 5)})",
     )
     parser.add_argument(
         "--output-dir",
         "-o",
         type=Path,
-        default=Path(__file__).parent.parent / "dicts",
+        default=project_root / defaults.get("output_dir", "output/dicts"),
         help="Output directory for dictionaries",
     )
     parser.add_argument(
         "--cache-dir",
         "-c",
         type=Path,
-        default=Path(__file__).parent.parent / "sources",
+        default=project_root / defaults.get("cache_dir", "sources"),
         help="Cache directory for downloaded sources",
     )
     parser.add_argument(
@@ -62,6 +67,7 @@ def main() -> int:
         "--force",
         "-f",
         action="store_true",
+        default=defaults.get("force", False),
         help="Force re-download of dictionaries",
     )
     parser.add_argument(

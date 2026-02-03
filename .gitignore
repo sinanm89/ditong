@@ -1,11 +1,17 @@
 # Cache (downloaded dictionaries)
 sources/
 
-# Output (generated dictionaries) - optional, may want to commit
-# dicts/
+# Output (all generated output goes here)
+output/
 
-# Test output
+# Legacy output folders (deprecated)
+dicts/
 dicts_test/
+test_output/
+test_output_full/
+test_output_ipa/
+test_output_parallel/
+consolidated/
 
 # Python
 __pycache__/
