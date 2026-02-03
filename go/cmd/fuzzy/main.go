@@ -1,5 +1,4 @@
-// ditong-fuzzy - Fuzzy word search using BK-tree.
-// Usage: ditong-fuzzy [options] <query>
+// ditong-fuzzy - Interactive fuzzy word search using BK-tree.
 package main
 
 import (
@@ -8,12 +7,17 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"ditong/internal/similarity"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/pflag"
 )
+
+var tree *similarity.BKTree
+var wordCount int
 
 func main() {
 	// Flags
@@ -23,25 +27,25 @@ func main() {
 	jsonOutput := pflag.BoolP("json", "j", false, "Output as JSON")
 	language := pflag.StringP("language", "L", "", "Filter by language (empty = all)")
 	wordType := pflag.StringP("type", "t", "", "Filter by word type (e.g., '5-c')")
+	interactive := pflag.BoolP("interactive", "i", false, "Run in interactive mode")
 
 	pflag.Parse()
 
-	if pflag.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: ditong-fuzzy [options] <query>")
-		fmt.Fprintln(os.Stderr, "\nOptions:")
-		pflag.PrintDefaults()
-		os.Exit(1)
+	// If no args and no interactive flag, default to interactive
+	if pflag.NArg() < 1 && !*jsonOutput {
+		*interactive = true
 	}
-
-	query := strings.ToLower(pflag.Arg(0))
 
 	// Find dictionary directory
 	if *dictDir == "" {
-		// Try common locations
 		candidates := []string{
+			"output/dicts",
+			"output/consolidated",
+			"output",
 			"dicts",
+			"../output/dicts",
+			"../output",
 			"../dicts",
-			"../../dicts",
 		}
 		for _, c := range candidates {
 			if info, err := os.Stat(c); err == nil && info.IsDir() {
@@ -49,27 +53,150 @@ func main() {
 				break
 			}
 		}
-		if *dictDir == "" {
-			fmt.Fprintln(os.Stderr, "Error: dictionary directory not found. Use --dict-dir")
-			os.Exit(1)
-		}
 	}
 
-	// Load words from dictionaries
+	if *interactive {
+		runInteractive(*dictDir, *maxDistance, *limit, *language, *wordType)
+		return
+	}
+
+	// Non-interactive mode
+	if pflag.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: ditong-fuzzy [options] <query>")
+		fmt.Fprintln(os.Stderr, "       ditong-fuzzy -i  (interactive mode)")
+		fmt.Fprintln(os.Stderr, "\nOptions:")
+		pflag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	if *dictDir == "" {
+		fmt.Fprintln(os.Stderr, "Error: dictionary directory not found. Use --dict-dir")
+		os.Exit(1)
+	}
+
+	query := strings.ToLower(pflag.Arg(0))
 	words := loadWords(*dictDir, *language, *wordType)
 	if len(words) == 0 {
 		fmt.Fprintln(os.Stderr, "No words found in dictionary")
 		os.Exit(1)
 	}
 
-	// Build BK-tree
 	tree := similarity.NewBKTree()
 	tree.InsertAll(words)
 
-	// Search
-	results := tree.Search(query, *maxDistance)
+	results := search(tree, query, *maxDistance, *limit)
+	outputResults(results, query, *maxDistance, *jsonOutput)
+}
 
-	// Sort by distance, then alphabetically
+func runInteractive(dictDir string, defaultDistance, defaultLimit int, language, wordType string) {
+	// Header
+	fmt.Println()
+	pterm.DefaultBigText.WithLetters(
+		pterm.NewLettersFromStringWithStyle("fuzzy", pterm.NewStyle(pterm.FgCyan)),
+	).Render()
+
+	pterm.DefaultBox.WithTitle(pterm.FgCyan.Sprint("Fuzzy Search")).
+		WithTitleTopCenter().
+		WithBoxStyle(pterm.NewStyle(pterm.FgLightBlue)).
+		Println(
+			pterm.FgWhite.Sprint("BK-tree similarity search") + "\n" +
+				pterm.FgGray.Sprint("Type a word to find similar matches. Commands: :q quit, :d N set distance, :l N set limit"),
+		)
+	fmt.Println()
+
+	// Get dictionary directory
+	if dictDir == "" {
+		dictDir, _ = pterm.DefaultInteractiveTextInput.
+			WithDefaultValue("./output/dicts").
+			Show("Dictionary directory")
+	}
+
+	if _, err := os.Stat(dictDir); os.IsNotExist(err) {
+		pterm.Error.Println("Directory not found:", dictDir)
+		os.Exit(1)
+	}
+
+	// Load words with spinner
+	spinner, _ := pterm.DefaultSpinner.Start("Loading dictionary...")
+	words := loadWords(dictDir, language, wordType)
+	if len(words) == 0 {
+		spinner.Fail("No words found in dictionary")
+		os.Exit(1)
+	}
+
+	spinner.UpdateText("Building search index...")
+	tree = similarity.NewBKTree()
+	tree.InsertAll(words)
+	wordCount = len(words)
+	spinner.Success(fmt.Sprintf("Loaded %s words", pterm.FgCyan.Sprintf("%d", wordCount)))
+	fmt.Println()
+
+	distance := defaultDistance
+	limit := defaultLimit
+
+	// Search loop
+	for {
+		query, _ := pterm.DefaultInteractiveTextInput.
+			WithDefaultText(pterm.FgGray.Sprint("(distance: "+strconv.Itoa(distance)+")")).
+			Show(pterm.FgCyan.Sprint("Search"))
+
+		query = strings.TrimSpace(strings.ToLower(query))
+		if query == "" {
+			continue
+		}
+
+		// Commands
+		if strings.HasPrefix(query, ":") {
+			if query == ":q" || query == ":quit" || query == ":exit" {
+				pterm.Info.Println("Goodbye!")
+				return
+			}
+			if strings.HasPrefix(query, ":d ") {
+				if n, err := strconv.Atoi(strings.TrimPrefix(query, ":d ")); err == nil && n >= 0 {
+					distance = n
+					pterm.Info.Println("Distance set to", pterm.FgCyan.Sprint(distance))
+				}
+				continue
+			}
+			if strings.HasPrefix(query, ":l ") {
+				if n, err := strconv.Atoi(strings.TrimPrefix(query, ":l ")); err == nil && n > 0 {
+					limit = n
+					pterm.Info.Println("Limit set to", pterm.FgCyan.Sprint(limit))
+				}
+				continue
+			}
+			pterm.Warning.Println("Unknown command. Use :q to quit, :d N for distance, :l N for limit")
+			continue
+		}
+
+		// Search
+		results := search(tree, query, distance, limit)
+
+		if len(results) == 0 {
+			pterm.Warning.Printf("No matches for %q within distance %d\n\n", query, distance)
+			continue
+		}
+
+		// Display results as table
+		tableData := pterm.TableData{{"Word", "Distance"}}
+		for _, r := range results {
+			distStr := strconv.Itoa(r.Distance)
+			if r.Distance == 0 {
+				distStr = pterm.FgGreen.Sprint("0 (exact)")
+			}
+			tableData = append(tableData, []string{r.Word, distStr})
+		}
+
+		pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+		pterm.Info.Printf("Found %s matches for %q\n\n",
+			pterm.FgCyan.Sprint(len(results)),
+			pterm.FgYellow.Sprint(query))
+	}
+}
+
+func search(tree *similarity.BKTree, query string, maxDistance, limit int) []similarity.SearchResult {
+	results := tree.Search(query, maxDistance)
+
 	sort.Slice(results, func(i, j int) bool {
 		if results[i].Distance != results[j].Distance {
 			return results[i].Distance < results[j].Distance
@@ -77,64 +204,57 @@ func main() {
 		return results[i].Word < results[j].Word
 	})
 
-	// Limit results
-	if *limit > 0 && len(results) > *limit {
-		results = results[:*limit]
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
 	}
 
-	// Output
-	if *jsonOutput {
+	return results
+}
+
+func outputResults(results []similarity.SearchResult, query string, maxDistance int, jsonOut bool) {
+	if jsonOut {
 		output := struct {
-			Query    string                    `json:"query"`
-			MaxDist  int                       `json:"max_distance"`
-			Count    int                       `json:"count"`
-			Results  []similarity.SearchResult `json:"results"`
+			Query   string                    `json:"query"`
+			MaxDist int                       `json:"max_distance"`
+			Count   int                       `json:"count"`
+			Results []similarity.SearchResult `json:"results"`
 		}{
 			Query:   query,
-			MaxDist: *maxDistance,
+			MaxDist: maxDistance,
 			Count:   len(results),
 			Results: results,
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.Encode(output)
-	} else {
-		if len(results) == 0 {
-			fmt.Printf("No matches found for %q within distance %d\n", query, *maxDistance)
-			return
-		}
-
-		fmt.Printf("Fuzzy matches for %q (max distance: %d):\n\n", query, *maxDistance)
-		for _, r := range results {
-			fmt.Printf("  %s (distance: %d)\n", r.Word, r.Distance)
-		}
-		fmt.Printf("\n%d result(s) found\n", len(results))
+		return
 	}
+
+	if len(results) == 0 {
+		fmt.Printf("No matches found for %q within distance %d\n", query, maxDistance)
+		return
+	}
+
+	fmt.Printf("Fuzzy matches for %q (max distance: %d):\n\n", query, maxDistance)
+	for _, r := range results {
+		fmt.Printf("  %s (distance: %d)\n", r.Word, r.Distance)
+	}
+	fmt.Printf("\n%d result(s) found\n", len(results))
 }
 
-// loadWords loads words from dictionary JSON files.
 func loadWords(dictDir, language, wordType string) []string {
 	var words []string
 
-	err := filepath.Walk(dictDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".json") {
+	filepath.Walk(dictDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".json") {
 			return nil
 		}
-
-		// Skip config files
 		if strings.HasPrefix(info.Name(), "_") {
 			return nil
 		}
-
-		// Filter by word type if specified
 		if wordType != "" && !strings.Contains(info.Name(), wordType) {
 			return nil
 		}
-
-		// Filter by language if specified
 		if language != "" {
 			rel, _ := filepath.Rel(dictDir, path)
 			if !strings.HasPrefix(rel, language+string(filepath.Separator)) &&
@@ -143,16 +263,9 @@ func loadWords(dictDir, language, wordType string) []string {
 			}
 		}
 
-		// Parse dictionary
-		dictWords := parseDictionary(path)
-		words = append(words, dictWords...)
-
+		words = append(words, parseDictionary(path)...)
 		return nil
 	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: error walking directory: %v\n", err)
-	}
 
 	// Deduplicate
 	seen := make(map[string]bool)
@@ -163,18 +276,16 @@ func loadWords(dictDir, language, wordType string) []string {
 			unique = append(unique, w)
 		}
 	}
-
 	return unique
 }
 
-// parseDictionary extracts words from a dictionary JSON file.
 func parseDictionary(path string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
 
-	// Try format 1: words as map {"words": {"word1": {...}, "word2": {...}}}
+	// Format 1: words as map
 	var dictMap struct {
 		Words map[string]struct {
 			Normalized string `json:"normalized"`
@@ -190,7 +301,7 @@ func parseDictionary(path string) []string {
 		return words
 	}
 
-	// Try format 2: words as array {"words": [{"normalized": "..."}, ...]}
+	// Format 2: words as object array
 	var dictArray struct {
 		Words []struct {
 			Normalized string `json:"normalized"`
@@ -206,7 +317,7 @@ func parseDictionary(path string) []string {
 		return words
 	}
 
-	// Try format 3: simple string array {"words": ["word1", "word2"]}
+	// Format 3: simple string array
 	var dictSimple struct {
 		Words []string `json:"words"`
 	}
